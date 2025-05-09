@@ -117,10 +117,13 @@ Then in the sidebar:
 ## 🤝 Acknowledgements
 
 This project was built collaboratively by:
+- [**Hosam Emam**](https://github.com/Hosam-emam)
+- [**Marceleno Ayman**](https://github.com/Leosce)
+- [**Therese Sameh**](https://github.com/Theresee13)
+- [**Omar ElMahy**](https://github.com/Elma7e)
 
-- **Hosam [Lead Developer]**
-- **Contributors and Reviewers** (add names or GitHub usernames here)
 - Special thanks to:
+  - **_Digital Egypt Pioneering Initiative_**
   - Ultralytics for YOLOv8
   - KITTI Vision Benchmark Suite
   - LISA Traffic Light Dataset
