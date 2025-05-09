@@ -171,7 +171,7 @@ class CombinedYOLODetector:
 
     def process_video(self, input_path, conf_threshold=0.25, iou_threshold=0.45):
         """
-        Process a video file with all models for Streamlit
+        Process a video file with all models in real-time for Streamlit
         
         Args:
             input_path (str): Path to input video file
@@ -179,14 +179,14 @@ class CombinedYOLODetector:
             iou_threshold (float): IOU threshold for NMS
             
         Returns:
-            tuple: (Statistics about detections, path to output video file)
+            dict: Statistics about detections
         """
         # Open video capture
         cap = cv2.VideoCapture(input_path)
         
         if not cap.isOpened():
             st.error(f"Error: Could not open video source {input_path}")
-            return {}, None
+            return {}
         
         # Get video properties
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -194,12 +194,13 @@ class CombinedYOLODetector:
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        # Create a temporary file for the output video
-        output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+        # Create a placeholder for the video frames
+        frame_placeholder = st.empty()
         
-        # Set up video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        # Create placeholders for the stats
+        stats_col1, stats_col2 = st.columns(2)
+        class_stats_placeholder = stats_col1.empty()
+        model_stats_placeholder = stats_col2.empty()
         
         # Create a progress bar
         progress_bar = st.progress(0)
@@ -210,15 +211,10 @@ class CombinedYOLODetector:
         detection_stats = defaultdict(int)
         model_stats = defaultdict(int)
         
-        # Create a placeholder for the video frames
-        frame_placeholder = st.empty()
+        # Create a stop button
+        stop_button = st.button("Stop Processing")
         
-        # Create placeholders for the stats
-        stats_col1, stats_col2 = st.columns(2)
-        class_stats_placeholder = stats_col1.empty()
-        model_stats_placeholder = stats_col2.empty()
-        
-        while cap.isOpened():
+        while cap.isOpened() and not stop_button:
             ret, frame = cap.read()
             if not ret:
                 break
@@ -231,22 +227,14 @@ class CombinedYOLODetector:
             # Convert to RGB for display
             processed_frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
             
-            # Write the processed frame (in BGR) to the output video file
-            out.write(processed_frame)
+            # Display the frame in Streamlit
+            frame_placeholder.image(processed_frame_rgb, caption='Processed Frame', use_container_width=True)
             
             # Update statistics
             for cls_name, detections in results.items():
                 detection_stats[cls_name] += len(detections)
                 for det in detections:
                     model_stats[det['model']] += 1
-            
-            # Display the frame in Streamlit
-            frame_placeholder.image(processed_frame_rgb, caption='Processed Frame', use_container_width=True)
-            
-            # Update progress bar and stats display
-            progress = min(frame_count / total_frames, 1.0) if total_frames > 0 else 0
-            progress_bar.progress(progress)
-            status_text.text(f"Processing frame {frame_count}/{total_frames}")
             
             # Update statistics display
             class_stats_placeholder.write("### Detections by Class")
@@ -255,12 +243,16 @@ class CombinedYOLODetector:
             model_stats_placeholder.write("### Detections by Model")
             model_stats_placeholder.write(dict(model_stats))
             
-            # Add a small delay to make the video playback smoother in Streamlit
-            time.sleep(0.01)
+            # Update progress bar
+            progress = min(frame_count / total_frames, 1.0) if total_frames > 0 else 0
+            progress_bar.progress(progress)
+            status_text.text(f"Processing frame {frame_count}/{total_frames}")
+            
+            # Add a small delay to control playback speed
+            time.sleep(1.0 / fps if fps > 0 else 0.03)
         
         # Cleanup
         cap.release()
-        out.release()
         
         # Final statistics
         stats = {
@@ -271,8 +263,8 @@ class CombinedYOLODetector:
         
         status_text.text(f"Completed processing {frame_count} frames")
         
-        return stats, output_path
-
+        return stats
+    
     def process_webcam(self, conf_threshold=0.25, iou_threshold=0.45):
         """
         Process webcam feed with all models for Streamlit
@@ -282,67 +274,13 @@ class CombinedYOLODetector:
             iou_threshold (float): IOU threshold for NMS
             
         Returns:
-            str: Path to the saved video file
+            None: Displays live feed directly
         """
-        # Improved webcam initialization
-        # Try different backends and indices
-        cap = None
-        camera_index = 0
-        
-        # List of camera backends to try (in priority order)
-        backends = [
-            cv2.CAP_ANY,          # Auto-detect
-            cv2.CAP_DSHOW,        # DirectShow (Windows)
-            cv2.CAP_MSMF,         # Media Foundation (Windows)
-            cv2.CAP_V4L2,         # Video4Linux2 (Linux)
-            cv2.CAP_AVFOUNDATION  # AVFoundation (macOS)
-        ]
-        
-        # Try different backends and indices
-        for backend in backends:
-            for i in range(3):  # Try first 3 camera indices
-                try:
-                    st.info(f"Trying to open camera index {i} with backend {backend}...")
-                    cap = cv2.VideoCapture(i, backend)
-                    
-                    # Check if camera opened successfully
-                    if cap is not None and cap.isOpened():
-                        # Read a test frame to confirm it's working
-                        ret, test_frame = cap.read()
-                        if ret and test_frame is not None and test_frame.size > 0:
-                            camera_index = i
-                            st.success(f"Successfully opened camera at index {i} with backend {backend}")
-                            break
-                        else:
-                            # Camera opened but can't read frames
-                            cap.release()
-                            cap = None
-                except Exception as e:
-                    st.warning(f"Error trying camera {i} with backend {backend}: {e}")
-                    if cap is not None:
-                        cap.release()
-                        cap = None
-            
-            # If we found a working camera, break out of backend loop
-            if cap is not None and cap.isOpened():
-                break
-        
-        if cap is None or not cap.isOpened():
-            st.error("Error: Could not open any camera. Please check your camera connection.")
+        # Simplified webcam initialization
+        cap = cv2.VideoCapture(0)  # Try default camera first
+        if not cap.isOpened():
+            st.error("Error: Could not open webcam. Please check your camera connection.")
             return None
-        
-        # Create a timestamp for the output filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = tempfile.NamedTemporaryFile(delete=False, suffix=f'_webcam_{timestamp}.mp4').name
-        
-        # Get video properties
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = 20  # Fixed fps for webcam recording
-        
-        # Set up video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
         # Create placeholders
         frame_placeholder = st.empty()
@@ -356,33 +294,30 @@ class CombinedYOLODetector:
         frame_count = 0
         
         # Create a stop button
-        stop_button_placeholder = st.empty()
-        stop_button = stop_button_placeholder.button("Stop Webcam")
+        stop_button = st.button("Stop Webcam")
         
         # Start recording
-        recording = True
-        st.info(f"Recording from camera index {camera_index}. Press 'Stop Webcam' to finish.")
+        st.info("Webcam is active. Press 'Stop Webcam' to finish.")
         
-        last_update_time = time.time()
-        update_interval = 1.0  # Update stats every second
-        
-        while cap.isOpened() and recording and not stop_button:
+        while cap.isOpened() and not stop_button:
             ret, frame = cap.read()
             if not ret:
-                st.error("Failed to get frame from camera. Camera may be disconnected.")
-                time.sleep(1)  # Wait a bit before trying again
+                st.warning("Failed to get frame from camera. Trying to reconnect...")
+                time.sleep(1)
+                cap.release()
+                cap = cv2.VideoCapture(0)
                 continue
             
             frame_count += 1
             
-            # Process frame with all models (frame is already in BGR format from OpenCV)
+            # Process frame with all models
             processed_frame, results = self.detect_on_frame(frame, conf_threshold, iou_threshold)
             
             # Convert to RGB for display
             processed_frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
             
-            # Write the processed frame (in BGR) to the output video file
-            out.write(processed_frame)
+            # Display the frame in Streamlit
+            frame_placeholder.image(processed_frame_rgb, caption='Live Detection', use_container_width=True)
             
             # Update statistics
             frame_detection_stats = defaultdict(int)
@@ -395,29 +330,15 @@ class CombinedYOLODetector:
                     frame_model_stats[det['model']] += 1
                     model_stats[det['model']] += 1
             
-            # Display the frame in Streamlit
-            frame_placeholder.image(processed_frame_rgb, caption='Live Detection', use_container_width=True)
+            # Update statistics display
+            class_stats_placeholder.write("### Current Frame Detections by Class")
+            class_stats_placeholder.write(dict(frame_detection_stats))
             
-            # Update statistics display periodically to reduce overhead
-            current_time = time.time()
-            if current_time - last_update_time > update_interval:
-                class_stats_placeholder.write("### Current Frame Detections by Class")
-                class_stats_placeholder.write(dict(frame_detection_stats))
-                
-                model_stats_placeholder.write("### Current Frame Detections by Model")
-                model_stats_placeholder.write(dict(frame_model_stats))
-                
-                last_update_time = current_time
-            
-            # Check if the stop button was pressed (using unique key to prevent button state issues)
-            stop_button = stop_button_placeholder.button("Stop Webcam", key=f"stop_{current_time}")
-            if stop_button:
-                recording = False
-                break
+            model_stats_placeholder.write("### Current Frame Detections by Model")
+            model_stats_placeholder.write(dict(frame_model_stats))
         
         # Cleanup
         cap.release()
-        out.release()
         
         # Show aggregate statistics
         st.write("### Total Detections by Class")
@@ -426,9 +347,7 @@ class CombinedYOLODetector:
         st.write("### Total Detections by Model")
         st.write(dict(model_stats))
         
-        st.success(f"Recorded {frame_count} frames to video file")
-        
-        return output_path
+        st.success(f"Processed {frame_count} frames from webcam")
 
 
 def get_image_download_link(img, filename, text):
@@ -447,17 +366,6 @@ def get_image_download_link(img, filename, text):
     # Generate download link
     btn = f'<a href="data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}" download="{filename}" style="display: inline-block; padding: 0.25em 0.5em; text-decoration: none; color: white; background: #4CAF50; border-radius: 3px; border: none; cursor: pointer; font-size: 16px;">{text}</a>'
     return btn
-
-
-def get_binary_file_downloader_html(file_path, file_label):
-    """
-    Generate a download link for a binary file
-    """
-    with open(file_path, 'rb') as f:
-        data = f.read()
-    
-    b64 = base64.b64encode(data).decode()
-    return f'<a href="data:video/mp4;base64,{b64}" download="{os.path.basename(file_path)}" style="display: inline-block; padding: 0.25em 0.5em; text-decoration: none; color: white; background: #2196F3; border-radius: 3px; border: none; cursor: pointer; font-size: 16px;">{file_label}</a>'
 
 
 def main():
@@ -554,9 +462,9 @@ def main():
                 # Process button
                 if st.button("Process Video"):
                     try:
-                        # Process the video
-                        with st.spinner("Processing video... This may take some time depending on the video length."):
-                            stats, output_video_path = detector.process_video(video_path, conf_threshold, iou_threshold)
+                        # Process the video in real-time
+                        with st.spinner("Processing video in real-time..."):
+                            stats = detector.process_video(video_path, conf_threshold, iou_threshold)
                         
                         # Display final statistics
                         st.subheader("Detection Statistics")
@@ -572,35 +480,18 @@ def main():
                             
                         st.write(f"Total Frames Processed: {stats['total_frames']}")
                         
-                        # Create download button for the processed video
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        download_filename = f"processed_video_{timestamp}.mp4"
-                        st.markdown(get_binary_file_downloader_html(output_video_path, "Download Processed Video"), unsafe_allow_html=True)
-                        
                     finally:
                         # Clean up the temporary file
                         os.unlink(video_path)
         
         elif input_type == "Webcam":
-            # Add webcam device selection
-            st.info("The system will attempt to detect available webcams.")
-            
-            # Add manual camera index option
-            manual_index = st.number_input("Or specify camera index manually (0, 1, 2, etc.)", min_value=0, max_value=10, value=0)
-            
             # Webcam processing
             if st.button("Start Webcam"):
                 # Show a message about webcam access
-                st.info("Starting webcam... If it doesn't work, try a different camera index or check your webcam permissions.")
+                st.info("Starting webcam... If it doesn't work, check your webcam permissions.")
                 
                 # Process webcam feed
-                output_video_path = detector.process_webcam(conf_threshold, iou_threshold)
-                
-                if output_video_path:
-                    # Create download button for the recorded video
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    download_filename = f"webcam_recording_{timestamp}.mp4"
-                    st.markdown(get_binary_file_downloader_html(output_video_path, "Download Webcam Recording"), unsafe_allow_html=True)
+                detector.process_webcam(conf_threshold, iou_threshold)
     else:
         st.warning("Please select at least one model from the sidebar to begin.")
         
@@ -613,7 +504,7 @@ def main():
         2. **Configure Settings**: Adjust the confidence and IOU thresholds as needed.
         3. **Select Input Type**: Choose between image, video, or webcam input.
         4. **Process Content**: Upload an image/video or start the webcam, then run detection.
-        5. **Download Results**: After processing, you can download the processed image or video.
+        5. **View Results**: See real-time detection results with statistics.
         
         ### Available Models:
         - **KITTI**: General traffic object detection based on the KITTI dataset
@@ -624,10 +515,9 @@ def main():
         ### Notes:
         - You can select multiple models to compare their detections side-by-side.
         - Each model uses a different color for its bounding boxes.
-        - The app shows both per-class and per-model statistics.
+        - The app shows both per-class and per-model statistics in real-time.
         - For webcam use, the system will automatically detect an available camera.
-        - If webcam detection fails, try specifying a camera index manually.
-        - Processed content is provided in a downloadable format.
+        - Video processing now shows real-time results rather than saving first.
         """)
 
 
