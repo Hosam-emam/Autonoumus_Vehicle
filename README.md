@@ -110,7 +110,7 @@ Then in the sidebar:
 
 | 🧠 Detection Output | ⚡ Real-Time Inference |
 |---------------------|------------------------|
-| ![example](Visuals/Pedestrians.jpg) | ▶ [Watch the demo video](Visuals/Media1.mp4) |
+| ![Detection](Visuals/Pedestrians.jpg) | ![Real-Time](Visuals/Media.gif) |
 
 ---
 
