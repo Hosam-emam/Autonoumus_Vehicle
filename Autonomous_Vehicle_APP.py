@@ -483,15 +483,33 @@ def main():
                     finally:
                         # Clean up the temporary file
                         os.unlink(video_path)
-        
+
         elif input_type == "Webcam":
-            # Webcam processing
-            if st.button("Start Webcam"):
-                # Show a message about webcam access
-                st.info("Starting webcam... If it doesn't work, check your webcam permissions.")
-                
-                # Process webcam feed
-                detector.process_webcam(conf_threshold, iou_threshold)
+            # Streamlit camera component instead of OpenCV VideoCapture
+            camera_img = st.camera_input("Take a photo")
+            if camera_img is not None:
+                # Convert to PIL and display
+                image = Image.open(camera_img).convert("RGB")
+                st.subheader("Captured Image")
+                st.image(image, use_container_width=True)
+
+                # Run detection on the captured frame
+                if st.button("Detect Objects on Capture"):
+                    with st.spinner("Processing image..."):
+                        processed_image, results = detector.process_image(
+                            image, conf_threshold, iou_threshold
+                        )
+
+                    # Show results
+                    st.subheader("Detection Results")
+                    st.image(processed_image, use_container_width=True)
+
+                    # Expandable per-class summaries
+                    for cls_name, detections in results.items():
+                        with st.expander(f"{cls_name} ({len(detections)})"):
+                            for i, det in enumerate(detections, start=1):
+                                st.write(f"Detection {i}: Confidence = {det['conf']:.2f}, Model = {det['model']}")
+
     else:
         st.warning("Please select at least one model from the sidebar to begin.")
         
