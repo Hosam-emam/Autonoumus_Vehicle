@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -10,6 +11,24 @@ from PIL import Image
 import io
 import base64
 from datetime import datetime
+
+class YOLOVideoProcessor(VideoProcessorBase):
+    def __init__(self, detector, conf_threshold, iou_threshold):
+        self.detector = detector
+        self.conf_threshold = conf_threshold
+        self.iou_threshold = iou_threshold
+
+    def recv(self, frame):
+        # convert to numpy BGR array
+        img = frame.to_ndarray(format="bgr24")
+        # run detection
+        processed_rgb, _ = self.detector.process_image(
+            img, self.conf_threshold, self.iou_threshold
+        )
+        # convert back to bgr for streaming
+        processed_bgr = cv2.cvtColor(processed_rgb, cv2.COLOR_RGB2BGR)
+        return frame.from_ndarray(processed_bgr, format="bgr24")
+
 
 class CombinedYOLODetector:
     def __init__(self, model_paths):
@@ -484,31 +503,19 @@ def main():
                         # Clean up the temporary file
                         os.unlink(video_path)
 
+
         elif input_type == "Webcam":
-            # Streamlit camera component instead of OpenCV VideoCapture
-            camera_img = st.camera_input("Take a photo")
-            if camera_img is not None:
-                # Convert to PIL and display
-                image = Image.open(camera_img).convert("RGB")
-                st.subheader("Captured Image")
-                st.image(image, use_container_width=True)
-
-                # Run detection on the captured frame
-                if st.button("Detect Objects on Capture"):
-                    with st.spinner("Processing image..."):
-                        processed_image, results = detector.process_image(
-                            image, conf_threshold, iou_threshold
-                        )
-
-                    # Show results
-                    st.subheader("Detection Results")
-                    st.image(processed_image, use_container_width=True)
-
-                    # Expandable per-class summaries
-                    for cls_name, detections in results.items():
-                        with st.expander(f"{cls_name} ({len(detections)})"):
-                            for i, det in enumerate(detections, start=1):
-                                st.write(f"Detection {i}: Confidence = {det['conf']:.2f}, Model = {det['model']}")
+            st.sidebar.write("## Webcam Streaming")
+            webrtc_ctx = webrtc_streamer(
+                key="yolo-webcam",
+                video_processor_factory=lambda: YOLOVideoProcessor(
+                    detector, conf_threshold, iou_threshold
+                ),
+                rtc_configuration={
+                    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+                },
+                media_stream_constraints={"video": True, "audio": False},
+            )
 
     else:
         st.warning("Please select at least one model from the sidebar to begin.")
