@@ -1,4 +1,4 @@
-![Detection](Visuals/icon-car.jpg)
+[![Detection](Visuals/icon-car.jpg)](https://autonomous-vehicle.streamlit.app/)
 
 A multi-model detection system for traffic objects using **YOLOv8 & YOL**
 
