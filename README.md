@@ -1,6 +1,6 @@
 # 🚗 Autonomous Vehicle
 
-Multi-model detection system for traffic objects using **YOLOv8 & YOL**
+Multi-model detection system for traffic objects using **YOLOv8 & YOLOv11**
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://autonomous-vehicle.streamlit.app/)
 
